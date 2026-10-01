@@ -4,7 +4,7 @@ go 1.26.0
 
 toolchain go1.26.8
 
-require github.com/sage-x-project/sage v0.0.0
+require github.com/sage-x-project/sage v1.5.3-0.20260930230154-8038e1906f9b
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
@@ -14,5 +14,3 @@ require (
 	github.com/holiman/uint256 v1.3.2 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 )
-
-replace github.com/sage-x-project/sage => /private/tmp/sage-reg08-media-go-20260930

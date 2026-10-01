@@ -179,7 +179,7 @@ func (s *Server) Admin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, maxAdminBody+1))
-	if err != nil || len(raw) > maxAdminBody || int64(len(raw)) != r.ContentLength {
+	if err != nil || len(raw) > maxAdminBody || int64(len(raw)) != r.ContentLength || len(r.Trailer) != 0 {
 		http.Error(w, "write rejected", http.StatusBadRequest)
 		return
 	}
