@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-func runtimeCertificates(t *testing.T) (tls.Certificate, tls.Certificate, *x509.CertPool, [32]byte) {
+func runtimeCertificates(t *testing.T) (tls.Certificate, tls.Certificate, tls.Certificate, tls.Certificate, *x509.CertPool, [32]byte, [32]byte, [32]byte) {
 	t.Helper()
 	createKey := func() *ecdsa.PrivateKey {
 		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -57,9 +57,12 @@ func runtimeCertificates(t *testing.T) (tls.Certificate, tls.Certificate, *x509.
 	}
 	server, _ := issue(2, []string{"agents.example.com", "admin.example.com"}, x509.ExtKeyUsageServerAuth)
 	client, clientDER := issue(3, []string{"controller.example.com"}, x509.ExtKeyUsageClientAuth)
+	operator, operatorDER := issue(4, []string{"operator.example.com"}, x509.ExtKeyUsageClientAuth)
+	inspector, inspectorDER := issue(5, []string{"inspector.example.com"}, x509.ExtKeyUsageClientAuth)
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
-	return server, client, roots, sha256.Sum256(clientDER)
+	return server, client, operator, inspector, roots, sha256.Sum256(clientDER),
+		sha256.Sum256(operatorDER), sha256.Sum256(inspectorDER)
 }
 
 func routedClient(address string, roots *x509.CertPool, identity []tls.Certificate) *http.Client {
@@ -72,12 +75,13 @@ func routedClient(address string, roots *x509.CertPool, identity []tls.Certifica
 }
 
 func TestRealTLSAdminWriteAndPublicRead(t *testing.T) {
-	serverCert, clientCert, roots, clientPin := runtimeCertificates(t)
+	serverCert, clientCert, operatorCert, inspectorCert, roots, clientPin, operatorPin, inspectorPin := runtimeCertificates(t)
 	config := Config{
 		JournalPath: filepath.Join(t.TempDir(), "registry.log"), DID: testDID,
 		Source: "https://agents.example.com", AdminHost: "admin.example.com",
-		ClientActors: map[[32]byte]string{clientPin: "controller"}, Create: true,
-		Now: func() time.Time { return time.Unix(100, 0) },
+		ClientActors: map[[32]byte]string{clientPin: "controller", operatorPin: "operator"}, Create: true,
+		InspectorPins: map[[32]byte]struct{}{inspectorPin: {}},
+		Now:           func() time.Time { return time.Unix(100, 0) },
 	}
 	service, err := New(config)
 	if err != nil {
@@ -93,6 +97,7 @@ func TestRealTLSAdminWriteAndPublicRead(t *testing.T) {
 	defer func() { admin.Close(); public.Close(); _ = service.Close() }()
 
 	payload, _ := json.Marshal(map[string]string{
+		"registry": "https://agents.example.com", "did": testDID,
 		"candidate":        base64.RawURLEncoding.EncodeToString(candidate(t)),
 		"expected_version": "", "operation": "create",
 	})
@@ -119,6 +124,75 @@ func TestRealTLSAdminWriteAndPublicRead(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusNoContent {
 		t.Fatalf("administrator status = %d", response.StatusCode)
+	}
+	operatorClient := routedClient(admin.Listener.Addr().String(), roots, []tls.Certificate{operatorCert})
+	grant := commandPayload(t, map[string]string{"expected_version": "1", "operation": "authorize-operator",
+		"target_operator": "operator", "scope": "activate"})
+	request, err = http.NewRequest(http.MethodPost, "https://admin.example.com/admin/registry", bytes.NewReader(grant))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err = operatorClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("operator attempted self-grant = %d", response.StatusCode)
+	}
+	request, err = http.NewRequest(http.MethodPost, "https://admin.example.com/admin/registry", bytes.NewReader(grant))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err = withCert.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("controller grant = %d", response.StatusCode)
+	}
+	activate := commandPayload(t, map[string]string{"candidate": nextCandidate(t, service, "3", "active", 100),
+		"expected_version": "2", "operation": "activate"})
+	request, err = http.NewRequest(http.MethodPost, "https://admin.example.com/admin/registry", bytes.NewReader(activate))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err = operatorClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("delegated TLS write = %d", response.StatusCode)
+	}
+	inspectorClient := routedClient(admin.Listener.Addr().String(), roots, []tls.Certificate{inspectorCert})
+	response, err = inspectorClient.Get("https://admin.example.com/admin/registry/inspection")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inspection, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusOK ||
+		!bytes.Contains(inspection, []byte(`"version":"3"`)) ||
+		!bytes.Contains(inspection, []byte(`"operation":"authorize-operator"`)) {
+		t.Fatalf("inspector read = %d, error = %v", response.StatusCode, err)
+	}
+	request, err = http.NewRequest(http.MethodPost, "https://admin.example.com/admin/registry", bytes.NewReader(grant))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err = inspectorClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("inspector write = %d", response.StatusCode)
 	}
 	config.Now = func() time.Time { return time.Unix(101, 0) }
 	service.now = config.Now
@@ -151,7 +225,7 @@ func TestRealTLSAdminWriteAndPublicRead(t *testing.T) {
 	}
 	defer func() { _ = restored.Close() }()
 	recorder := publicCall(restored, "https://agents.example.com/.well-known/sage/agents/billing-bot")
-	if recorder.Code != http.StatusOK || !bytes.Contains(recorder.Body.Bytes(), []byte(`"version":"1"`)) {
+	if recorder.Code != http.StatusOK || !bytes.Contains(recorder.Body.Bytes(), []byte(`"version":"3"`)) {
 		t.Fatalf("restored public state = %d", recorder.Code)
 	}
 }

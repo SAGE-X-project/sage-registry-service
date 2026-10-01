@@ -10,7 +10,7 @@ github.com/ethereum/go-ethereum v1.17.5 h1:o9BIXs2Q/3cPHVxw49n+Zjn2i6rB9TOXatev4
 github.com/ethereum/go-ethereum v1.17.5/go.mod h1:vz2YvG7RewA4sFHTgzLyW+WmFG1N4jfk/hgXQVhhn9c=
 github.com/holiman/uint256 v1.3.2 h1:a9EgMPSC1AAaj1SZL5zIQD3WbwTuHrMGOerLjGmM/TA=
 github.com/holiman/uint256 v1.3.2/go.mod h1:EOMSn4q6Nyt9P6efbI3bueV4e1b3dGlUCXeiRV4ng7E=
-github.com/sage-x-project/sage v1.5.3-0.20260930230154-8038e1906f9b h1:u8qOdHeTXtldtQ4WsjLaqSinqeOXavMNggOcFWn60lY=
-github.com/sage-x-project/sage v1.5.3-0.20260930230154-8038e1906f9b/go.mod h1:eXQo+9uD8oeOTlANkMsO+Yq5xDEMQKgAqk6lZ3GePy8=
+github.com/sage-x-project/sage v1.5.3-0.20261001044409-ad2ee8834934 h1:/CFMUT7xg5B1u83eMbsbis0n7vA8tO+zvvlM8HpG07Q=
+github.com/sage-x-project/sage v1.5.3-0.20261001044409-ad2ee8834934/go.mod h1:eXQo+9uD8oeOTlANkMsO+Yq5xDEMQKgAqk6lZ3GePy8=
 golang.org/x/sys v0.48.0 h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
 golang.org/x/sys v0.48.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=

@@ -4,7 +4,7 @@ go 1.26.0
 
 toolchain go1.26.8
 
-require github.com/sage-x-project/sage v1.5.3-0.20260930230154-8038e1906f9b
+require github.com/sage-x-project/sage v1.5.3-0.20261001044409-ad2ee8834934
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect

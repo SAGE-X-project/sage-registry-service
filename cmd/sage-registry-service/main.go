@@ -22,19 +22,20 @@ import (
 )
 
 type fileConfig struct {
-	PublicListen   string            `json:"public_listen"`
-	AdminListen    string            `json:"admin_listen"`
-	PublicCertFile string            `json:"public_cert_file"`
-	PublicKeyFile  string            `json:"public_key_file"`
-	AdminCertFile  string            `json:"admin_cert_file"`
-	AdminKeyFile   string            `json:"admin_key_file"`
-	ClientCAFile   string            `json:"client_ca_file"`
-	ClientActors   map[string]string `json:"client_actors"`
-	JournalPath    string            `json:"journal_path"`
-	DID            string            `json:"did"`
-	Source         string            `json:"source"`
-	AdminHost      string            `json:"admin_host"`
-	Create         bool              `json:"create"`
+	PublicListen     string            `json:"public_listen"`
+	AdminListen      string            `json:"admin_listen"`
+	PublicCertFile   string            `json:"public_cert_file"`
+	PublicKeyFile    string            `json:"public_key_file"`
+	AdminCertFile    string            `json:"admin_cert_file"`
+	AdminKeyFile     string            `json:"admin_key_file"`
+	ClientCAFile     string            `json:"client_ca_file"`
+	ClientActors     map[string]string `json:"client_actors"`
+	InspectorClients []string          `json:"inspector_clients"`
+	JournalPath      string            `json:"journal_path"`
+	DID              string            `json:"did"`
+	Source           string            `json:"source"`
+	AdminHost        string            `json:"admin_host"`
+	Create           bool              `json:"create"`
 }
 
 func readConfig(path string) (fileConfig, error) {
@@ -54,7 +55,8 @@ func readConfig(path string) (fileConfig, error) {
 		return cfg, errors.New("invalid configuration")
 	}
 	if cfg.PublicListen == "" || cfg.AdminListen == "" ||
-		cfg.DID == "" || cfg.Source == "" || cfg.AdminHost == "" || len(cfg.ClientActors) == 0 ||
+		cfg.DID == "" || cfg.Source == "" || cfg.AdminHost == "" ||
+		len(cfg.ClientActors) == 0 || len(cfg.InspectorClients) == 0 ||
 		!filepath.IsAbs(cfg.JournalPath) || !filepath.IsAbs(cfg.PublicCertFile) ||
 		!filepath.IsAbs(cfg.PublicKeyFile) || !filepath.IsAbs(cfg.AdminCertFile) ||
 		!filepath.IsAbs(cfg.AdminKeyFile) || !filepath.IsAbs(cfg.ClientCAFile) {
@@ -88,6 +90,26 @@ func actors(values map[string]string) (map[[32]byte]string, error) {
 			return nil, errors.New("duplicate client certificate mapping")
 		}
 		result[pin] = actor
+	}
+	return result, nil
+}
+
+func inspectors(values []string, writers map[[32]byte]string) (map[[32]byte]struct{}, error) {
+	result := make(map[[32]byte]struct{}, len(values))
+	for _, value := range values {
+		raw, err := hex.DecodeString(value)
+		if err != nil || len(raw) != 32 {
+			return nil, errors.New("invalid inspector certificate fingerprint")
+		}
+		var pin [32]byte
+		copy(pin[:], raw)
+		if _, duplicate := result[pin]; duplicate {
+			return nil, errors.New("duplicate inspector certificate fingerprint")
+		}
+		if _, writer := writers[pin]; writer {
+			return nil, errors.New("inspector certificate has write authority")
+		}
+		result[pin] = struct{}{}
 	}
 	return result, nil
 }
@@ -127,6 +149,10 @@ func run(ctx context.Context, cfg fileConfig) error {
 	if err != nil {
 		return err
 	}
+	inspectorPins, err := inspectors(cfg.InspectorClients, clientActors)
+	if err != nil {
+		return err
+	}
 	publicListener, err := net.Listen("tcp", cfg.PublicListen)
 	if err != nil {
 		return err
@@ -138,7 +164,8 @@ func run(ctx context.Context, cfg fileConfig) error {
 	}
 	defer adminListener.Close()
 	service, err := registry.New(registry.Config{JournalPath: cfg.JournalPath, DID: cfg.DID,
-		Source: cfg.Source, AdminHost: cfg.AdminHost, ClientActors: clientActors, Create: cfg.Create})
+		Source: cfg.Source, AdminHost: cfg.AdminHost, ClientActors: clientActors,
+		InspectorPins: inspectorPins, Create: cfg.Create})
 	if err != nil {
 		return err
 	}
