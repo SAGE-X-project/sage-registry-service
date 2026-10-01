@@ -125,6 +125,21 @@ func TestRealTLSAdminWriteAndPublicRead(t *testing.T) {
 	if response.StatusCode != http.StatusNoContent {
 		t.Fatalf("administrator status = %d", response.StatusCode)
 	}
+	unbound := commandPayload(t, map[string]string{"expected_version": "1", "operation": "authorize-operator",
+		"target_operator": "unbound", "scope": "activate"})
+	request, err = http.NewRequest(http.MethodPost, "https://admin.example.com/admin/registry", bytes.NewReader(unbound))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err = withCert.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("unbound TLS grant = %d", response.StatusCode)
+	}
 	operatorClient := routedClient(admin.Listener.Addr().String(), roots, []tls.Certificate{operatorCert})
 	grant := commandPayload(t, map[string]string{"expected_version": "1", "operation": "authorize-operator",
 		"target_operator": "operator", "scope": "activate"})

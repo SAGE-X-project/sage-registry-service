@@ -60,6 +60,7 @@ type Server struct {
 	path       string
 	admin      string
 	actors     map[[32]byte]string
+	principals map[string]struct{}
 	inspectors map[[32]byte]struct{}
 	mu         sync.Mutex
 	uncertain  bool
@@ -86,12 +87,14 @@ func New(cfg Config) (*Server, error) {
 		clock = time.Now
 	}
 	actors := make(map[[32]byte]string, len(cfg.ClientActors))
+	principals := make(map[string]struct{}, len(cfg.ClientActors))
 	for pin, actor := range cfg.ClientActors {
 		if !validActor(actor) {
 			_ = journal.Close()
 			return nil, registry010.ErrRejected
 		}
 		actors[pin] = actor
+		principals[actor] = struct{}{}
 	}
 	inspectors := make(map[[32]byte]struct{}, len(cfg.InspectorPins))
 	for pin := range cfg.InspectorPins {
@@ -103,7 +106,7 @@ func New(cfg Config) (*Server, error) {
 	}
 	return &Server{journal: journal, did: cfg.DID, source: cfg.Source,
 		host: parsed.Host, path: parsed.Path, admin: cfg.AdminHost, actors: actors,
-		inspectors: inspectors, now: clock}, nil
+		principals: principals, inspectors: inspectors, now: clock}, nil
 }
 
 func validActor(actor string) bool {
@@ -268,6 +271,12 @@ func (s *Server) Admin(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := context.WithValue(r.Context(), actorContextKey{}, actor)
 	if managementOperation(request.Operation) {
+		if request.Operation == "authorize-operator" {
+			if _, mapped := s.principals[request.TargetOperator]; !mapped {
+				http.Error(w, "write rejected", http.StatusForbidden)
+				return
+			}
+		}
 		if len(s.journal.Inspect().History) == 0 {
 			http.Error(w, "write rejected", http.StatusConflict)
 			return

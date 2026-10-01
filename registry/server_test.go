@@ -52,7 +52,9 @@ func testServer(t *testing.T) (*Server, *x509.Certificate, *int64) {
 	server, err := New(Config{
 		JournalPath: filepath.Join(t.TempDir(), "registry.log"), DID: testDID,
 		Source: "https://agents.example.com", AdminHost: "admin.example.com",
-		ClientActors: map[[32]byte]string{pin: "controller"}, Create: true,
+		ClientActors: map[[32]byte]string{
+			pin: "controller", sha256.Sum256([]byte("operator-client")): "operator",
+		}, Create: true,
 		InspectorPins: map[[32]byte]struct{}{inspectorPin: {}},
 		Now:           func() time.Time { return time.Unix(now, 0) },
 	})
@@ -138,6 +140,14 @@ func TestOperatorCommandsBindActorVersionAndDurableGrantState(t *testing.T) {
 		t.Fatalf("create = %d: %s", got.Code, got.Body.String())
 	}
 	now = 101
+	unbound := commandPayload(t, map[string]string{"expected_version": "1", "operation": "authorize-operator",
+		"target_operator": "unbound", "scope": "activate"})
+	if got := adminCall(server, controller, unbound); got.Code != http.StatusForbidden {
+		t.Fatalf("grant to unbound principal = %d", got.Code)
+	}
+	if state := server.journal.Inspect(); len(state.History) != 1 || len(state.Grants) != 0 {
+		t.Fatal("unbound grant changed committed state")
+	}
 	grant := commandPayload(t, map[string]string{"expected_version": "1", "operation": "authorize-operator",
 		"target_operator": "operator", "scope": "activate"})
 	if got := adminCall(server, operator, grant); got.Code != http.StatusForbidden {
