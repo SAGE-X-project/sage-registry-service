@@ -53,7 +53,7 @@ func readConfig(path string) (fileConfig, error) {
 	if decoder.Decode(&cfg) != nil || decoder.Decode(new(any)) != io.EOF {
 		return cfg, errors.New("invalid configuration")
 	}
-	if cfg.PublicListen == "" || cfg.AdminListen == "" || cfg.PublicListen == cfg.AdminListen ||
+	if cfg.PublicListen == "" || cfg.AdminListen == "" ||
 		cfg.DID == "" || cfg.Source == "" || cfg.AdminHost == "" || len(cfg.ClientActors) == 0 ||
 		!filepath.IsAbs(cfg.JournalPath) || !filepath.IsAbs(cfg.PublicCertFile) ||
 		!filepath.IsAbs(cfg.PublicKeyFile) || !filepath.IsAbs(cfg.AdminCertFile) ||
