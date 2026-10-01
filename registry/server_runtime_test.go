@@ -193,6 +193,7 @@ func TestRealTLSAdminWriteAndPublicRead(t *testing.T) {
 	response.Body.Close()
 	if err != nil || response.StatusCode != http.StatusOK ||
 		!bytes.Contains(inspection, []byte(`"version":"3"`)) ||
+		!bytes.Contains(inspection, []byte(`"grants":[]`)) ||
 		!bytes.Contains(inspection, []byte(`"operation":"authorize-operator"`)) {
 		t.Fatalf("inspector read = %d, error = %v", response.StatusCode, err)
 	}

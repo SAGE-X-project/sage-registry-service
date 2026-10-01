@@ -349,7 +349,9 @@ func (s *Server) inspect(w http.ResponseWriter, r *http.Request, pin [32]byte) {
 		Grants     []registry010.WebRegistryOperatorGrant010 `json:"grants"`
 		History    []registry010.WebRegistryHistoryEntry010  `json:"history"`
 		Tombstoned bool                                      `json:"tombstoned"`
-	}{s.source, s.did, latest.Record.Version, state.Grants, state.History, state.Tombstoned})
+	}{s.source, s.did, latest.Record.Version,
+		append(make([]registry010.WebRegistryOperatorGrant010, 0), state.Grants...),
+		state.History, state.Tombstoned})
 	if err != nil {
 		http.Error(w, "inspection unavailable", http.StatusServiceUnavailable)
 		return
