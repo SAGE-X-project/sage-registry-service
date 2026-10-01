@@ -10,6 +10,9 @@ configured leaf-certificate fingerprint to controller or operator identifier
 mapping. Grant, revoke and lifecycle writes use the same serialized journal
 transaction. The public handler checks the exact configured host and path and
 returns only the core-generated JSON envelope.
+The controller can grant only an operator identifier already present in the
+certificate-to-actor mapping. Revocation remains possible after that mapping
+is removed, so a stale grant can be cleared.
 
 The executable takes one JSON configuration file. All certificate, key and
 journal paths must be absolute. The configured `source` and `admin_host` must
