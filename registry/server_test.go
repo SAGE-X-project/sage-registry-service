@@ -269,6 +269,61 @@ func TestServiceRejectsUnboundOrOverlappingPrincipals(t *testing.T) {
 	}
 }
 
+func TestControllerRevokesOperatorAfterSigningKeyExpires(t *testing.T) {
+	controller := &x509.Certificate{Raw: []byte("controller-client")}
+	now := int64(100)
+	server, err := New(Config{JournalPath: filepath.Join(t.TempDir(), "registry.log"), DID: testDID,
+		Source: "https://agents.example.com", AdminHost: "admin.example.com", Create: true,
+		ClientActors: map[[32]byte]string{
+			sha256.Sum256(controller.Raw):            "controller",
+			sha256.Sum256([]byte("operator-client")): "operator",
+		}, InspectorPins: map[[32]byte]struct{}{sha256.Sum256([]byte("inspector-client")): {}},
+		Now: func() time.Time { return time.Unix(now, 0) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	var envelope map[string]any
+	if err := json.Unmarshal(candidate(t), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	record := envelope["record"].(map[string]any)
+	record["keys"].([]any)[0].(map[string]any)["expires"] = float64(101)
+	raw, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	create := commandPayload(t, map[string]string{"candidate": base64.RawURLEncoding.EncodeToString(raw),
+		"expected_version": "", "operation": "create"})
+	if got := adminCall(server, controller, create); got.Code != http.StatusNoContent {
+		t.Fatalf("create = %d", got.Code)
+	}
+	activate := commandPayload(t, map[string]string{"candidate": nextCandidate(t, server, "2", "active", now),
+		"expected_version": "1", "operation": "activate"})
+	if got := adminCall(server, controller, activate); got.Code != http.StatusNoContent {
+		t.Fatalf("activate = %d", got.Code)
+	}
+	grant := commandPayload(t, map[string]string{"expected_version": "2", "operation": "authorize-operator",
+		"target_operator": "operator", "scope": "add-key"})
+	if got := adminCall(server, controller, grant); got.Code != http.StatusNoContent {
+		t.Fatalf("grant = %d", got.Code)
+	}
+	now = 102
+	if registry010.CheckWebRegistryProofs010(server.journal.Inspect().Envelope, testDID, now) == nil {
+		t.Fatal("expired signing key retained message authority")
+	}
+	revoke := commandPayload(t, map[string]string{"expected_version": "3", "operation": "revoke-operator",
+		"target_operator": "operator", "scope": "add-key"})
+	if got := adminCall(server, controller, revoke); got.Code != http.StatusNoContent {
+		t.Fatalf("management-only revoke = %d: %s", got.Code, got.Body.String())
+	}
+	state := server.journal.Inspect()
+	if len(state.Grants) != 0 || len(state.History) != 4 ||
+		state.History[3].Operation != "revoke-operator" {
+		t.Fatal("revocation did not commit the expired record history")
+	}
+}
+
 func TestJournalBacksAdminAndPublicHandlers(t *testing.T) {
 	server, cert, now := testServer(t)
 	target := "https://agents.example.com/.well-known/sage/agents/billing-bot"
